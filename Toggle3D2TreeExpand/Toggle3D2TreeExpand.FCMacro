@@ -1,0 +1,107 @@
+#########################################################
+# Toggle 3D2TreeExpand  (diagnostic build v2)
+#
+# Toggles Preferences > General > Selection > "Auto switch to the 3D view
+# containing the selected item" (TreeView/SyncSelection) with one click, and
+# updates the toolbar button icon to reflect the new state.
+#
+# Button lookup now matches across several action attributes (tooltip, text,
+# whatsThis, objectName) since a macro button's tooltip is often empty unless
+# set manually in the Customize dialog. MATCH_TOKEN is the substring to look
+# for; set a matching Tooltip on the button in Tools > Customize > Macros if
+# nothing is found.
+#
+# INSTRUCTIONS
+# - Copy  Toggle3D2TreeExpand.FCMacro to your FreeCAD Macro folder.
+#   Likely: C:\Users\<user>\AppData\Roaming\FreeCAD\v1-1\Macro\
+# - Create an Icons folder in the Macro folder if it doesn't exist already and
+# - Copy the icons Toggle3D2TreeOff.svg and Toggle3D2TreeOn.svg into ...\Macro\Icons
+#
+#########################################################
+
+import os
+import FreeCAD
+import FreeCADGui
+from PySide import QtGui
+
+# --- config -----------------------------------------------------------------
+PARAM_GROUP = "User parameter:BaseApp/Preferences/TreeView"
+PARAM_KEY   = "SyncSelection"
+MATCH_TOKEN = "Toggle 3D to Tree"   # substring searched across action text/tooltip/whatsThis/objectName
+ICON_DIR = os.path.join(FreeCAD.getUserMacroDir(True), "Icons")
+ICON_ON  = os.path.join(ICON_DIR, "Toggle3D2TreeOn.svg")    # "enabled" icon
+ICON_OFF = os.path.join(ICON_DIR, "Toggle3D2TreeOff.svg")   # "disabled" icon
+DEBUG = True
+# END config
+
+
+def log(msg):
+    if DEBUG:
+        FreeCAD.Console.PrintMessage("[Toggle3D2TreeExpand] " + msg + "\n")
+    # END if
+# END log()
+
+
+def action_matches(a, token):
+    # Check several attributes; any hit counts. Guards for None returns.
+    token = token.lower()
+    for getter in (a.text, a.toolTip, a.whatsThis, a.objectName, a.statusTip):
+        try:
+            val = getter() or ""
+        except Exception:
+            val = ""
+        # END try
+        if token in val.lower():
+            return True
+        # END if
+    # END for
+    return False
+# END action_matches()
+
+
+def find_action():
+    mw = FreeCADGui.getMainWindow()
+    for a in mw.findChildren(QtGui.QAction):
+        if action_matches(a, MATCH_TOKEN):
+            return a
+        # END if
+    # END for
+    return None
+# END find_action()
+
+
+def set_button_icon(is_on):
+    if not ICON_ON or not ICON_OFF:
+        return
+    # END if
+    path = ICON_ON if is_on else ICON_OFF
+    log("icon path: {}  exists={}".format(path, os.path.isfile(path)))
+    icon = QtGui.QIcon(path)
+    log("QIcon null? {}".format(icon.isNull()))
+
+    target = find_action()
+    if target is None:
+        log("NO matching action found for token {!r}. Set the button's Tooltip "
+            "to contain that token in Tools > Customize > Macros, or adjust "
+            "MATCH_TOKEN.".format(MATCH_TOKEN))
+        return
+    # END if
+
+    log("matched action: text={!r} tooltip={!r} objectName={!r}".format(
+        target.text(), target.toolTip(), target.objectName()))
+    target.setIcon(icon)
+    mw = FreeCADGui.getMainWindow()
+    for btn in mw.findChildren(QtGui.QToolButton):
+        if btn.defaultAction() is target:
+            btn.repaint()
+        # END if
+    # END for
+    log("setIcon done")
+# END set_button_icon()
+
+
+param = FreeCAD.ParamGet(PARAM_GROUP)
+new_val = not param.GetBool(PARAM_KEY)
+param.SetBool(PARAM_KEY, new_val)
+set_button_icon(new_val)
+log("SyncSelection -> {}".format("ON" if new_val else "OFF"))
